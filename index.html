@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Enhanced Graph Visualization - Grid of Clusters</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        font-family: sans-serif;
+        background: #f0f0f0;
+      }
+      /* Sidebar for legend, search, node list, link relations, and stats */
+      #sidebar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 250px;
+        height: 100%;
+        overflow-y: auto;
+        background: #ffffff;
+        border-right: 1px solid #ccc;
+        padding: 10px;
+        box-sizing: border-box;
+      }
+      #sidebar h3 {
+        margin-top: 0;
+      }
+      .legend-item, .node-item, .relation-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+        cursor: pointer;
+      }
+      .legend-dot, .relation-dot {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      /* Topbar for customization controls */
+      #topbar {
+        position: absolute;
+        top: 0;
+        left: 250px;
+        right: 0;
+        height: 40px;
+        background: #ddd;
+        padding: 5px 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-sizing: border-box;
+      }
+      /* Main graph container */
+      #graph-container {
+        position: absolute;
+        top: 40px;
+        left: 250px;
+        right: 0;
+        bottom: 0;
+      }
+      /* Details panel for node info */
+      #details-panel {
+        position: absolute;
+        top: 50px;
+        right: 20px;
+        width: 250px;
+        max-height: 400px;
+        overflow-y: auto;
+        background: rgba(255,255,255,0.95);
+        border: 1px solid #ccc;
+        padding: 10px;
+        display: none;
+      }
+      /* Mini map container */
+      #minimap {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        width: 200px;
+        height: 150px;
+        border: 1px solid #ccc;
+        background: #fff;
+      }
+      /* Pagination controls styling */
+      #details-panel div.pagination {
+        text-align: center;
+        margin-top: 5px;
+      }
+      #details-panel button {
+        margin: 0 5px;
+      }
+      /* Make details panel list items clickable */
+      #details-panel li {
+        cursor: pointer;
+        margin: 2px 0;
+      }
+    </style>
+    <!-- Load Sigma.js v2 from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sigma@2.3.0/build/sigma.min.js"></script>
+    <!-- Load Graphology from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/graphology@0.21.1/dist/graphology.umd.min.js"></script>
+  </head>
+  <body>
+    <!-- Sidebar with Legend, Search, Node List, Link Relations, and Stats -->
+    <div id="sidebar">
+      <h3>Legend</h3>
+      <div class="legend-item">
+        <div class="legend-dot" style="background-color:red;"></div>
+        <span>Parent Node</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background-color:yellow;"></div>
+        <span>Selected Node</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background-color:blue;"></div>
+        <span>Child Node</span>
+      </div>
+      <hr>
+      <h3>Search</h3>
+      <input type="text" id="search-input" placeholder="Search node..." style="width: 100%; box-sizing: border-box;">
+      <hr>
+      <h3>Reset Nodes</h3>
+      <button onclick="resetNodes()">Reset Nodes</button>
+      <hr>
+      <h3>Node List</h3>
+      <div id="node-list"></div>
+      <hr>
+      <h3>Link Relations</h3>
+      <div id="link-relations"></div>
+      <hr>
+      <h3>Stats</h3>
+      <div id="stats"></div>
+    </div>
+    <!-- Topbar with Controls -->
+    <div id="topbar">
+      <button id="toggle-theme">Toggle Theme</button>
+      <button id="bookmark-save">Save View</button>
+      <button id="bookmark-load">Load View</button>
+      <button id="export-btn">Export as Image</button>
+      <label>Node Size: <input type="range" id="node-size" min="2" max="10" value="4"></label>
+      <label><input type="checkbox" id="toggle-labels" checked> Show Labels</label>
+    </div>
+    <!-- Main graph container -->
+    <div id="graph-container"></div>
+    <!-- Mini map container -->
+    <div id="minimap"></div>
+    <!-- Details panel -->
+    <div id="details-panel"></div>
+    
+    <script>
+      // Global variables
+      let currentTheme = 'light';
+      let sigmaInstance, miniMapInstance;
+      let graph;
+      const PAGE_SIZE = 10; // Number of nodes per page for pagination
+      
+      // Mapping for relation types to colors.
+      const relationColors = {
+        'relationType1': '#ff0000',  // red
+        'relationType2': '#00ff00',  // green
+        'relationType3': '#0000ff'   // blue
+      };
+      
+      // Build Link Relations legend in the sidebar.
+      function buildLinkRelationsLegend() {
+        const container = document.getElementById('link-relations');
+        container.innerHTML = '';
+        for (const rel in relationColors) {
+          const div = document.createElement('div');
+          div.className = 'relation-item';
+          div.innerHTML = `<div class="relation-dot" style="background-color: ${relationColors[rel]};"></div><span>${rel}</span>`;
+          container.appendChild(div);
+        }
+      }
+      
+      // Load graph JSON data from data/graph.json
+      fetch('data/graph.json')
+        .then(response => response.json())
+        .then(graphData => {
+          // 1. Compute parent mapping from links
+          const parentMapping = {};
+          graphData.links.forEach(link => {
+            if (!parentMapping[link.target]) {
+              parentMapping[link.target] = link.source;
+            }
+          });
+          
+          // 2. Assign group to each node based on its parent (or itself if no parent)
+          graphData.nodes.forEach(n => {
+            n.group = parentMapping[n.id] ? parentMapping[n.id] : n.id;
+          });
+          
+          // 3. Collect nodes by group
+          const groups = {};
+          graphData.nodes.forEach(n => {
+            if (!groups[n.group]) groups[n.group] = [];
+            groups[n.group].push(n);
+          });
+          
+          // 4. Position group centers on a grid
+          const groupKeys = Object.keys(groups);
+          const columns = Math.ceil(Math.sqrt(groupKeys.length));
+          const groupSpacing = 5000; // distance between group centers
+          const groupCenters = {};
+          const overallRadius = 100000; // Adjust as needed.
+          groupKeys.forEach((g, idx) => {
+            const angle = (2 * Math.PI * idx) / groupKeys.length * groupSpacing;
+            const jitter = (Math.random() - 0.5) * overallRadius * 0.2;
+            groupCenters[g] = {
+              x: Math.cos(angle) * overallRadius + jitter,
+              y: Math.sin(angle) * overallRadius + jitter
+            };
+          });
+          
+          // 5. For each group, arrange its nodes in a circle around the group center
+          const nodeCircleRadius = 8000; // radius of each group's internal circle
+          groupKeys.forEach(gKey => {
+            const nodeArray = groups[gKey];
+            const nCount = nodeArray.length;
+            const center = groupCenters[gKey];
+            if (nCount === 1) {
+              nodeArray[0].x = center.x;
+              nodeArray[0].y = center.y;
+            } else {
+              nodeArray.forEach((node, i) => {
+                const angle = (2 * Math.PI * i) / nCount;
+                const jitter = (Math.random() - 0.5) * nodeCircleRadius * 0.3;
+                node.x = center.x + nodeCircleRadius * Math.cos(angle) + jitter;
+                node.y = center.y + nodeCircleRadius * Math.sin(angle) + jitter;
+              });
+            }
+          });
+          
+          // 6. Create a new Graphology graph instance and add nodes.
+          graph = new graphology.Graph();
+          graphData.nodes.forEach(n => {
+            graph.addNode(n.id, {
+              label: n.label || n.id,
+              x: n.x,
+              y: n.y,
+              size: 4,
+              color: '#888888',
+              group: n.group,
+              details: n.details || ''
+            });
+          });
+          
+          // 7. Add edges with colors based on relation types.
+          graphData.links.forEach(l => {
+            const edgeColor = relationColors[l.relation] || '#ccc';
+            graph.addEdge(l.source, l.target, {
+              label: l.relation || '',
+              color: edgeColor
+            });
+          });
+          
+          // Build the link relations legend.
+          buildLinkRelationsLegend();
+          
+          // Initialize Sigma instance.
+          sigmaInstance = new Sigma(graph, document.getElementById('graph-container'), {
+            renderLabels: true,
+            defaultNodeColor: '#888888',
+            defaultEdgeColor: '#ccc'
+          });
+          
+          // Delay access to the PixiJS app until sigmaInstance.renderers is populated.
+          setTimeout(() => {
+            if (sigmaInstance.renderers && sigmaInstance.renderers.length > 0) {
+              const pixiApp = sigmaInstance.renderers[0].getPixiApp();
+              
+              // Example: Create a ParticleContainer for node sprites.
+              const particleContainer = new PIXI.ParticleContainer(300000, {
+                scale: true,
+                position: true,
+                rotation: false,
+                uvs: false,
+                alpha: true,
+              });
+              
+              // Load a texture for nodes (ensure the image exists in your project).
+              const nodeTexture = PIXI.Texture.from('path/to/node.png');
+              
+              // For each node, create a sprite and add to the ParticleContainer.
+              graphData.nodes.forEach(n => {
+                const sprite = new PIXI.Sprite(nodeTexture);
+                sprite.x = n.x;
+                sprite.y = n.y;
+                sprite.scale.set(0.5); // Adjust size as needed.
+                particleContainer.addChild(sprite);
+              });
+              
+              // Add the ParticleContainer to the Pixi stage.
+              pixiApp.stage.addChild(particleContainer);
+            } else {
+              console.error("PixiJS renderer not available.");
+            }
+          }, 100);
+          
+          // Update stats panel and node list.
+          updateStats();
+          buildNodeList();
+          
+          // Search functionality for node list.
+          document.getElementById('search-input').addEventListener('input', function(e) {
+            const query = e.target.value.toLowerCase();
+            filterNodeList(query);
+          });
+          
+          // Topbar controls.
+          document.getElementById('toggle-theme').addEventListener('click', () => {
+            currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+            applyTheme();
+          });
+          document.getElementById('bookmark-save').addEventListener('click', () => {
+            const cameraState = sigmaInstance.getCamera();
+            localStorage.setItem('graphCamera', JSON.stringify(cameraState));
+            alert('View saved!');
+          });
+          document.getElementById('bookmark-load').addEventListener('click', () => {
+            const saved = localStorage.getItem('graphCamera');
+            if (saved) {
+              sigmaInstance.getCamera().animate(JSON.parse(saved), { duration: 500 });
+            }
+          });
+          document.getElementById('node-size').addEventListener('input', function(e) {
+            const newSize = parseInt(e.target.value);
+            graph.forEachNode((node, attrs) => {
+              attrs.size = newSize;
+            });
+            sigmaInstance.refresh();
+          });
+          document.getElementById('toggle-labels').addEventListener('change', function(e) {
+            sigmaInstance.setSetting('renderLabels', e.target.checked);
+          });
+          document.getElementById('export-btn').addEventListener('click', () => {
+            const canvas = sigmaInstance.getCamera().container.querySelector('canvas');
+            const dataUrl = canvas.toDataURL();
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = 'graph.png';
+            link.click();
+          });
+          
+          // Setup node click event.
+          sigmaInstance.on('clickNode', ({ node }) => {
+            const nodeData = graph.getNodeAttributes(node);
+            showDetails(node, nodeData);
+            highlightNode(node);
+          });
+          
+          // Initialize mini map.
+          miniMapInstance = new Sigma(graph, document.getElementById('minimap'), {
+            renderLabels: false,
+            defaultNodeColor: '#888888',
+            defaultEdgeColor: '#ccc',
+            settings: { scalingMode: 'inside' }
+          });
+          miniMapInstance.getMouseCaptor().disable();
+        })
+        .catch(err => console.error('Error loading graph data:', err));
+      
+      // Update stats panel.
+      function updateStats() {
+        const statsDiv = document.getElementById('stats');
+        const nodeCount = graph.order;
+        const edgeCount = graph.size;
+        statsDiv.innerHTML = `Nodes: ${nodeCount}<br>Edges: ${edgeCount}`;
+      }
+      
+      // Build node list sorted by name and child count.
+      function buildNodeList() {
+        const childCountMap = {};
+        graph.forEachEdge((edge, attrs, source, target) => {
+          childCountMap[source] = (childCountMap[source] || 0) + 1;
+        });
+        const nodesArr = [];
+        graph.forEachNode((node, attrs) => {
+          nodesArr.push({
+            id: node,
+            label: attrs.label,
+            childCount: childCountMap[node] || 0
+          });
+        });
+        nodesArr.sort((a, b) => {
+          if (b.childCount !== a.childCount) return b.childCount - a.childCount;
+          return a.label.localeCompare(b.label);
+        });
+        const nodeListContainer = document.getElementById('node-list');
+        nodeListContainer.innerHTML = '';
+        nodesArr.forEach(n => {
+          const div = document.createElement('div');
+          div.className = 'node-item';
+          div.textContent = `${n.label} (${n.childCount})`;
+          div.addEventListener('click', () => {
+            showDetails(n.id, graph.getNodeAttributes(n.id));
+            highlightNode(n.id);
+          });
+          nodeListContainer.appendChild(div);
+        });
+      }
+      
+      // Filter node list by search query.
+      function filterNodeList(query) {
+        const nodeListContainer = document.getElementById('node-list');
+        const items = nodeListContainer.getElementsByClassName('node-item');
+        Array.from(items).forEach(item => {
+          item.style.display = item.textContent.toLowerCase().includes(query) ? 'block' : 'none';
+        });
+      }
+      
+      // Apply light/dark theme.
+      function applyTheme() {
+        if (currentTheme === 'dark') {
+          document.body.style.background = '#222';
+          document.getElementById('topbar').style.background = '#444';
+          sigmaInstance.setSetting('defaultNodeColor', '#aaa');
+          sigmaInstance.setSetting('defaultEdgeColor', '#888');
+        } else {
+          document.body.style.background = '#f0f0f0';
+          document.getElementById('topbar').style.background = '#ddd';
+          sigmaInstance.setSetting('defaultNodeColor', '#888888');
+          sigmaInstance.setSetting('defaultEdgeColor', '#ccc');
+        }
+        sigmaInstance.refresh();
+      }
+      
+      // Show node details with paginated parent and child nodes.
+      function showDetails(nodeId, attrs) {
+        const parents = [];
+        const children = [];
+        graph.forEachEdge((edge, edgeAttrs, source, target) => {
+          if (target === nodeId) {
+            const parentAttrs = graph.getNodeAttributes(source);
+            parents.push({ id: source, text: `${parentAttrs.label || source} (${edgeAttrs.label})` });
+          }
+          if (source === nodeId) {
+            const childAttrs = graph.getNodeAttributes(target);
+            children.push({ id: target, text: `${childAttrs.label || target} (${edgeAttrs.label})` });
+          }
+        });
+        renderDetailsPanel(nodeId, attrs, parents, children, 1, 1, PAGE_SIZE);
+        document.getElementById('details-panel').style.display = 'block';
+      }
+      
+      // Render details panel with pagination.
+      function renderDetailsPanel(nodeId, attrs, parents, children, parentPage, childPage, pageSize) {
+        let html = `<strong>${attrs.label}</strong><br>Group: ${attrs.group}<br>${attrs.details || ''}`;
+        if (parents.length) {
+          html += `<br><strong>Parent Nodes (${parents.length}):</strong>`;
+          const totalParentPages = Math.ceil(parents.length / pageSize);
+          const parentStart = (parentPage - 1) * pageSize;
+          const parentEnd = Math.min(parentPage * pageSize, parents.length);
+          html += `<ul>`;
+          for (let i = parentStart; i < parentEnd; i++) {
+            html += `<li onclick="changeSelected('${parents[i].id}')">${parents[i].text}</li>`;
+          }
+          html += `</ul>`;
+          if (totalParentPages > 1) {
+            html += `<div class="pagination" id="parent-pagination">`;
+            if (parentPage > 1) {
+              html += `<button id="prev-parent">Prev</button>`;
+            }
+            html += ` Parent Page ${parentPage} of ${totalParentPages} `;
+            if (parentPage < totalParentPages) {
+              html += `<button id="next-parent">Next</button>`;
+            }
+            html += `</div>`;
+          }
+        }
+        if (children.length) {
+          html += `<br><strong>Child Nodes (${children.length}):</strong>`;
+          const totalChildPages = Math.ceil(children.length / pageSize);
+          const childStart = (childPage - 1) * pageSize;
+          const childEnd = Math.min(childPage * pageSize, children.length);
+          html += `<ul>`;
+          for (let i = childStart; i < childEnd; i++) {
+            html += `<li onclick="changeSelected('${children[i].id}')">${children[i].text}</li>`;
+          }
+          html += `</ul>`;
+          if (totalChildPages > 1) {
+            html += `<div class="pagination" id="child-pagination">`;
+            if (childPage > 1) {
+              html += `<button id="prev-child">Prev</button>`;
+            }
+            html += ` Child Page ${childPage} of ${totalChildPages} `;
+            if (childPage < totalChildPages) {
+              html += `<button id="next-child">Next</button>`;
+            }
+            html += `</div>`;
+          }
+        }
+        const panel = document.getElementById('details-panel');
+        panel.innerHTML = html;
+        
+        if (parents.length > pageSize) {
+          if (parentPage > 1) {
+            document.getElementById('prev-parent').addEventListener('click', () => {
+              renderDetailsPanel(nodeId, attrs, parents, children, parentPage - 1, childPage, pageSize);
+            });
+          }
+          if (parentPage < Math.ceil(parents.length / pageSize)) {
+            document.getElementById('next-parent').addEventListener('click', () => {
+              renderDetailsPanel(nodeId, attrs, parents, children, parentPage + 1, childPage, pageSize);
+            });
+          }
+        }
+        if (children.length > pageSize) {
+          if (childPage > 1) {
+            document.getElementById('prev-child').addEventListener('click', () => {
+              renderDetailsPanel(nodeId, attrs, parents, children, parentPage, childPage - 1, pageSize);
+            });
+          }
+          if (childPage < Math.ceil(children.length / pageSize)) {
+            document.getElementById('next-child').addEventListener('click', () => {
+              renderDetailsPanel(nodeId, attrs, parents, children, parentPage, childPage + 1, pageSize);
+            });
+          }
+        }
+      }
+      
+      // Change selected node when clicked in details panel.
+      function changeSelected(newNodeId) {
+        const newAttrs = graph.getNodeAttributes(newNodeId);
+        showDetails(newNodeId, newAttrs);
+        highlightNode(newNodeId);
+      }
+      
+      // Highlight node and its connections.
+      function highlightNode(nodeId) {
+        graph.forEachNode((node, attrs) => {
+          graph.setNodeAttribute(node, 'color', '#f0f0f0');
+          graph.setNodeAttribute(node, 'size', 1);
+          graph.setNodeAttribute(node, 'hidden', true);
+        });
+        graph.forEachEdge((edge, attrs, source, target) => {
+          graph.setEdgeAttribute(edge, 'color', '#f0f0f0');
+          graph.setEdgeAttribute(edge, 'size', 0);
+          graph.setEdgeAttribute(edge, 'hidden', true);
+        });
+        graph.setNodeAttribute(nodeId, 'color', 'yellow');
+        graph.setNodeAttribute(nodeId, 'size', 8);
+        graph.setNodeAttribute(nodeId, 'hidden', false);
+        graph.forEachEdge((edge, eAttrs, source, target) => {
+          if (source === nodeId) {
+            graph.setNodeAttribute(target, 'color', 'blue');
+            graph.setNodeAttribute(target, 'size', 4);
+            graph.setNodeAttribute(target, 'hidden', false);
+            graph.setEdgeAttribute(edge, 'color', 'blue');
+            graph.setEdgeAttribute(edge, 'size', 1);
+            graph.setEdgeAttribute(edge, 'hidden', false);
+          }
+          if (target === nodeId) {
+            graph.setNodeAttribute(source, 'color', 'red');
+            graph.setNodeAttribute(source, 'size', 4);
+            graph.setNodeAttribute(source, 'hidden', false);
+            graph.setEdgeAttribute(edge, 'color', 'red');
+            graph.setEdgeAttribute(edge, 'size', 1);
+            graph.setEdgeAttribute(edge, 'hidden', false);
+          }
+        });
+        sigmaInstance.refresh();
+        if (miniMapInstance) miniMapInstance.refresh();
+      }
+      
+      // Optional: Set custom reducers for proper layering of highlighted elements.
+      if(sigmaInstance) {
+        sigmaInstance.setSetting('nodeReducer', (node, data) => {
+          if(data.color === 'yellow' || data.color === 'blue' || data.color === 'red'){
+            return { ...data, zIndex: 10 };
+          }
+          return { ...data, zIndex: 0 };
+        });
+      
+        sigmaInstance.setSetting('edgeReducer', (edge, data) => {
+          if(data.color === 'blue' || data.color === 'red'){
+            return { ...data, zIndex: 10 };
+          }
+          return { ...data, zIndex: 0 };
+        });
+      }
+      
+      // Reset nodes and edges to default.
+      function resetNodes() {
+        graph.forEachNode((node, attrs) => {
+          graph.setNodeAttribute(node, 'color', '#888');
+          graph.setNodeAttribute(node, 'size', 4);
+          graph.setNodeAttribute(node, 'hidden', false);
+        });
+        graph.forEachEdge((edge, attrs, source, target) => {
+          graph.setEdgeAttribute(edge, 'color', '#ccc');
+          graph.setEdgeAttribute(edge, 'size', 1);
+          graph.setEdgeAttribute(edge, 'hidden', false);
+        });
+        sigmaInstance.refresh();
+      }
+    </script>
+  </body>
+</html>
