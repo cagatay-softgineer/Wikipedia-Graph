@@ -3,107 +3,175 @@
   <head>
     <meta charset="utf-8">
     <title>Enhanced Graph Visualization - Grid of Clusters</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Optional: Animate.css for smooth animations -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+      /* Global Styles */
       html, body {
-        margin: 0;
         height: 100%;
-        font-family: sans-serif;
-        background: #f0f0f0;
+        background: #f7f7f7;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       }
-      /* Sidebar for legend, search, node list, link relations, and stats */
+      
+      /* Sidebar (using Bootstrap classes for layout and spacing) */
       #sidebar {
-        position: absolute;
+        position: fixed;
         top: 0;
         left: 0;
-        width: 250px;
+        width: 260px;
         height: 100%;
         overflow-y: auto;
         background: #ffffff;
-        border-right: 1px solid #ccc;
-        padding: 10px;
-        box-sizing: border-box;
+        border-right: 1px solid #e0e0e0;
+        padding: 15px;
+        box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+        z-index: 1050;
       }
       #sidebar h3 {
-        margin-top: 0;
+        margin-bottom: 10px;
+        font-size: 1.1em;
+        color: #555;
       }
-      .legend-item, .node-item, .relation-item {
+      .legend-item,
+      .node-item,
+      .relation-item {
         display: flex;
         align-items: center;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
         cursor: pointer;
+        padding: 5px;
+        border-radius: 4px;
+        transition: background-color 0.2s ease;
       }
-      .legend-dot, .relation-dot {
+      .legend-item:hover,
+      .node-item:hover,
+      .relation-item:hover {
+        background-color: #f0f0f0;
+      }
+      .legend-dot,
+      .relation-dot {
         width: 15px;
         height: 15px;
         border-radius: 50%;
-        margin-right: 8px;
+        margin-right: 10px;
       }
-      /* Topbar for customization controls */
+      
+      /* Topbar (using Bootstrap navbar styling) */
       #topbar {
-        position: absolute;
+        position: fixed;
         top: 0;
-        left: 250px;
+        left: 260px;
         right: 0;
-        height: 40px;
-        background: #ddd;
-        padding: 5px 10px;
+        height: 60px;
+        background: #fafafa;
+        padding: 10px 20px;
+        border-bottom: 1px solid #e0e0e0;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
         display: flex;
         align-items: center;
-        gap: 10px;
-        box-sizing: border-box;
+        gap: 15px;
+        z-index: 1040;
       }
+      
       /* Main graph container */
       #graph-container {
-        position: absolute;
-        top: 40px;
-        left: 250px;
+        position: fixed;
+        top: 60px;
+        left: 260px;
         right: 0;
         bottom: 0;
-      }
-      /* Details panel for node info */
-      #details-panel {
-        position: absolute;
-        top: 50px;
-        right: 20px;
-        width: 250px;
-        max-height: 400px;
-        overflow-y: auto;
-        background: rgba(255,255,255,0.95);
-        border: 1px solid #ccc;
-        padding: 10px;
-        display: none;
-      }
-      /* Mini map container */
-      #minimap {
-        position: absolute;
-        bottom: 20px;
-        right: 20px;
-        width: 200px;
-        height: 150px;
-        border: 1px solid #ccc;
         background: #fff;
       }
-      /* Pagination controls styling */
-      #details-panel div.pagination {
+      
+      /* Details panel for node info */
+      #details-panel {
+        position: fixed;
+        top: 70px;
+        right: 20px;
+        width: 380px;
+        max-height: 620px;
+        overflow-y: auto;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        display: none;
+        z-index: 1060;
+      }
+      
+      /* Mini map container */
+      #minimap {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 220px;
+        height: 170px;
+        border: 1px solid #ddd;
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        z-index: 1030;
+      }
+      
+      /* Pagination Controls in Details Panel */
+      #details-panel .pagination {
         text-align: center;
-        margin-top: 5px;
+        margin-top: 10px;
       }
       #details-panel button {
         margin: 0 5px;
+        padding: 4px 10px;
+        border: 1px solid #ccc;
+        background: #fafafa;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.2s ease;
       }
-      /* Make details panel list items clickable */
+      #details-panel button:hover {
+        background: #f0f0f0;
+      }
       #details-panel li {
         cursor: pointer;
-        margin: 2px 0;
+        margin: 4px 0;
+        padding: 4px 6px;
+        border-radius: 3px;
+        transition: background-color 0.2s ease;
+      }
+      #details-panel li:hover {
+        background-color: #f9f9f9;
+      }
+      
+      /* Responsive Adjustments using Bootstrap breakpoints */
+      @media (max-width: 768px) {
+        #sidebar {
+          width: 220px;
+          padding: 10px;
+        }
+        #topbar {
+          left: 220px;
+          padding: 8px 10px;
+        }
+        #graph-container {
+          left: 220px;
+        }
+        #details-panel {
+          width: 240px;
+          top: 65px;
+        }
+        #minimap {
+          width: 200px;
+          height: 150px;
+        }
       }
     </style>
-    <!-- Load Sigma.js v2 from CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/sigma@2.3.0/build/sigma.min.js"></script>
-    <!-- Load Graphology from CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/graphology@0.21.1/dist/graphology.umd.min.js"></script>
   </head>
   <body>
-    <!-- Sidebar with Legend, Search, Node List, Link Relations, and Stats -->
+    <!-- Sidebar -->
     <div id="sidebar">
       <h3>Legend</h3>
       <div class="legend-item">
@@ -120,10 +188,10 @@
       </div>
       <hr>
       <h3>Search</h3>
-      <input type="text" id="search-input" placeholder="Search node..." style="width: 100%; box-sizing: border-box;">
+      <input type="text" id="search-input" class="form-control" placeholder="Search node...">
       <hr>
       <h3>Reset Nodes</h3>
-      <button onclick="resetNodes()">Reset Nodes</button>
+      <button onclick="resetNodes()" class="btn btn-outline-secondary btn-sm">Reset Nodes</button>
       <hr>
       <h3>Node List</h3>
       <div id="node-list"></div>
@@ -134,22 +202,46 @@
       <h3>Stats</h3>
       <div id="stats"></div>
     </div>
-    <!-- Topbar with Controls -->
+    
+    <!-- Topbar -->
     <div id="topbar">
-      <button id="toggle-theme">Toggle Theme</button>
-      <button id="bookmark-save">Save View</button>
-      <button id="bookmark-load">Load View</button>
-      <button id="export-btn">Export as Image</button>
-      <label>Node Size: <input type="range" id="node-size" min="2" max="10" value="4"></label>
-      <label><input type="checkbox" id="toggle-labels" checked> Show Labels</label>
+      <button id="toggle-theme" class="btn btn-primary btn-sm">
+        <i class="fas fa-adjust"></i> Toggle Theme
+      </button>
+      <button id="bookmark-save" class="btn btn-secondary btn-sm">
+        <i class="fas fa-bookmark"></i> Save View
+      </button>
+      <button id="bookmark-load" class="btn btn-secondary btn-sm">
+        <i class="fas fa-download"></i> Load View
+      </button>
+      <button id="export-btn" class="btn btn-success btn-sm">
+        <i class="fas fa-image"></i> Export Image
+      </button>
+      <div class="d-flex align-items-center">
+        <label for="node-size" class="me-2 mb-0">Node Size:</label>
+        <input type="range" id="node-size" min="2" max="10" value="4" class="form-range">
+      </div>
+      <div class="form-check">
+        <input type="checkbox" id="toggle-labels" class="form-check-input" checked>
+        <label for="toggle-labels" class="form-check-label">Show Labels</label>
+      </div>
     </div>
-    <!-- Main graph container -->
+    
+    <!-- Main Graph Container -->
     <div id="graph-container"></div>
-    <!-- Mini map container -->
+    
+    <!-- Mini Map -->
     <div id="minimap"></div>
-    <!-- Details panel -->
+    
+    <!-- Details Panel -->
     <div id="details-panel"></div>
     
+    <!-- Include Bootstrap JS (Optional: for interactive components) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Sigma.js and Graphology libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/sigma@2.3.0/build/sigma.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/graphology@0.21.1/dist/graphology.umd.min.js"></script>
+
     <script>
       // Global variables
       let currentTheme = 'light';
@@ -430,6 +522,7 @@
       
       // Show node details with paginated parent and child nodes.
       function showDetails(nodeId, attrs) {
+        // Existing code to gather parent and child nodes...
         const parents = [];
         const children = [];
         graph.forEachEdge((edge, edgeAttrs, source, target) => {
@@ -442,8 +535,19 @@
             children.push({ id: target, text: `${childAttrs.label || target} (${edgeAttrs.label})` });
           }
         });
-        renderDetailsPanel(nodeId, attrs, parents, children, 1, 1, PAGE_SIZE);
-        document.getElementById('details-panel').style.display = 'block';
+        
+        // Call the Wikipedia details function using the node's label.
+        getDetailsFromWikipedia(attrs.label)
+        .then(wikiSummary => {
+          // Remove any existing Wikipedia summary from the details.
+          let originalDetails = attrs.details || '';
+          originalDetails = originalDetails.replace(/<br><br><strong>Wikipedia Summary:<\/strong>[\s\S]*/, '');
+            
+          // Append the new summary.
+          attrs.details = `${originalDetails}<br><br><strong>Wikipedia Summary:</strong> ${wikiSummary}`;
+          renderDetailsPanel(nodeId, attrs, parents, children, 1, 1, PAGE_SIZE);
+          document.getElementById('details-panel').style.display = 'block';
+        });
       }
       
       // Render details panel with pagination.
@@ -596,6 +700,25 @@
           graph.setEdgeAttribute(edge, 'hidden', false);
         });
         sigmaInstance.refresh();
+      }
+
+      function getDetailsFromWikipedia(pageName) {
+        const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageName)}`;
+        return fetch(url)
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Wikipedia page not found');
+            }
+            return response.json();
+          })
+          .then(data => {
+            // Return the extract (summary) from the Wikipedia page.
+            return data.extract;
+          })
+          .catch(error => {
+            console.error('Error fetching Wikipedia details:', error);
+            return 'No details available from Wikipedia.';
+          });
       }
     </script>
   </body>
